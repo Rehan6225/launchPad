@@ -2,11 +2,8 @@ const express = require('express');
 const cors = require('cors');
 
 const missionRoutes = require('./routes/mission.routes');
-const { router: weeksRoutes } = require('./routes/weeks.routes');
-const { tasksRouter, outcomesRouter } = require('./routes/tasks.routes');
-const logsRoutes = require('./routes/logs.routes');
-const { router: applicationsRoutes, roundsRouter } = require('./routes/applications.routes');
-const insightsRoutes = require('./routes/insights.routes');
+const { weekRouter, tasksRouter, notesRouter, activityRouter } = require('./routes/week.routes');
+const applicationsRoutes = require('./routes/applications.routes');
 
 const app = express();
 
@@ -16,13 +13,11 @@ app.use(express.json());
 app.get('/api/health', (_req, res) => res.json({ status: 'ok' }));
 
 app.use('/api/mission', missionRoutes);
-app.use('/api/weeks', weeksRoutes);
+app.use('/api/week', weekRouter);
 app.use('/api/tasks', tasksRouter);
-app.use('/api/outcomes', outcomesRouter);
-app.use('/api/logs', logsRoutes);
+app.use('/api/notes', notesRouter);
+app.use('/api/activity', activityRouter);
 app.use('/api/applications', applicationsRoutes);
-app.use('/api/rounds', roundsRouter);
-app.use('/api/insights', insightsRoutes);
 
 app.use((_req, res) => res.status(404).json({ message: 'Endpoint not found.' }));
 

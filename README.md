@@ -1,70 +1,59 @@
 # Launchpad — Career Command Center
 
-A minimal, dark-mode career execution tracker for one mission:
+A minimal, dark-mode tracker for one mission:
 **₹20 LPA → ₹40 LPA Full-Stack Engineer by December 2026.**
 
-Angular 18 (standalone components + routing) on the frontend, Node.js + Express + PostgreSQL on the backend.
+Angular 18 frontend, Node.js + Express + PostgreSQL backend.
 
 ---
 
-## Design principles
+## How it works
 
-- **No invented progress.** Every metric is derived from plans you commit and days you log. Empty data renders an honest empty state, never a fake number. The CTC progress bar only moves when an actual offer is recorded.
-- **Plan ≠ execution.** `weeks / week_outcomes / planned_tasks` store the original commitment (estimates, dates, priorities are immutable). `daily_logs / log_entries` store what really happened. Review & Insights compares the two.
-- **Simple over clever.** Compact cards, neutral dark palette, one blue accent, no decorative animation.
+There is one idea: **a task**. A task has a title, a date, a pillar, and a done checkbox.
 
----
+Every task belongs to one of four pillars — the things that actually move your CTC:
 
-## Project structure
+| Pillar | Example task |
+| --- | --- |
+| DSA | 3 binary search problems |
+| System Design | Read DDIA ch. 5, write a 1-page summary |
+| Projects | Ship auth to the side project |
+| Job Hunt | Ask 2 people for referrals at Razorpay |
 
-```
-DevMode/
-├── web/                        # Angular frontend
-│   └── src/app/
-│       ├── core/
-│       │   ├── models/         # Shared TypeScript domain types
-│       │   ├── data/           # Mock backend + insight calculations
-│       │   └── services/       # ApiService + signal-based stores
-│       ├── shared/components/  # Card, Stat, Badge, Empty, Loading, Error, Progress
-│       ├── layout/shell/       # Sidebar + responsive app shell
-│       └── features/           # dashboard | weekly-plan | daily-log | applications | review
-└── api/                        # Express + PostgreSQL API
-    └── src/
-        ├── db/                 # pool, schema.sql, migrate, seed
-        ├── routes/             # mission | weeks | tasks | logs | applications | insights
-        └── utils/              # row mappers, HTTP helpers
-```
+Three pages:
+
+1. **Today** — add today's 1–3 tasks, tick them off, write an optional note (what happened / what blocked you). Unfinished tasks from earlier days show up with a "Move to today" button.
+2. **Week** — set one focus line for the week, see progress per pillar (a pillar with nothing planned is flagged), plan tasks for any day, and see each day's tasks and notes.
+3. **Jobs** — your pipeline: Target → Referral asked → Applied → Interviewing → Offer.
+   Each company has a pay band (can they pay 40L?), source (referral / recruiter / direct), a contact,
+   and a **next step with a date**. A one-line nudge tells you where the pipeline is stuck.
+   Active companies with no change for 7+ days are flagged **stale**.
+   Record an offer (fixed + total) and the ₹ progress bar at the top moves.
+
+**The daily loop:** a company's next step shows up on **Today** under "Job follow-ups" when it's due.
+Clicking **Done** logs it as a completed Job Hunt task (so it counts on the contribution map)
+and asks for the next step — so no company silently goes quiet.
+
+Weeks are automatic (Monday–Sunday) — there is nothing to create.
+The CTC progress bar only moves when you record a real offer.
 
 ---
 
 ## Running it
 
-### 1. Frontend (mock data, no database needed)
-
-```bash
-cd web
-npm install
-npm start          # http://localhost:4200
-```
-
-`src/environments/environment.ts` ships with `useMock: true`. The in-memory mock backend mirrors the real REST contracts and persists to `localStorage`, so the whole app is usable before Postgres exists.
-
-### 2. Backend
-
 ```bash
 createdb launchpad
 cd api
 npm install
-cp .env.example .env        # adjust DATABASE_URL
+cp .env.example .env        # set DATABASE_URL
 npm run db:migrate          # apply schema.sql
-npm run db:seed             # inserts the mission + pillars only — no fake progress
+npm run db:seed             # inserts the mission only
 npm run dev                 # http://localhost:4000
+
+cd ../web
+npm install
+npm start                   # http://localhost:4200 (proxies /api to :4000)
 ```
-
-### 3. Switch the frontend to the real API
-
-Set `useMock: false` in `web/src/environments/environment.ts`, then `npm start`.
-The dev server proxies `/api` to `http://localhost:4000` via `proxy.conf.json`.
 
 ---
 
@@ -72,40 +61,17 @@ The dev server proxies `/api` to `http://localhost:4000` via `proxy.conf.json`.
 
 | Method | Endpoint | Purpose |
 | --- | --- | --- |
-| GET | `/api/mission` | Mission, CTC targets, pillars |
-| GET / POST | `/api/weeks` | List plan / create a week |
-| DELETE | `/api/weeks/:id` | Delete a week (cascades) |
-| POST | `/api/weeks/:id/outcomes` | Add a weekly outcome |
-| PATCH / DELETE | `/api/outcomes/:id` | Toggle achieved / remove |
-| POST | `/api/weeks/:id/tasks` | Add a planned task |
-| PATCH | `/api/tasks/:id` | Update **status only** (plan stays immutable) |
-| DELETE | `/api/tasks/:id` | Remove a planned task |
-| GET / POST | `/api/logs` | List / create a daily log |
-| PATCH / DELETE | `/api/logs/:id` | Edit or delete a log |
-| POST | `/api/logs/:id/entries` | Record actual minutes against a task |
-| DELETE | `/api/logs/:id/entries/:entryId` | Remove an entry |
-| GET / POST | `/api/applications` | Pipeline list / create |
-| PATCH / DELETE | `/api/applications/:id` | Update status, follow-up, offer |
-| POST | `/api/applications/:id/rounds` | Add an interview round |
-| PATCH / DELETE | `/api/rounds/:id` | Update / remove a round |
-| GET | `/api/insights` | Weekly completion, planned vs actual hours, next actions |
+| GET | `/api/mission` | Mission, CTC targets, best recorded offer |
+| GET | `/api/week/:monday` | Tasks, notes and focus for that Monday–Sunday |
+| PUT | `/api/week/:monday/focus` | Set the week's focus line |
+| POST | `/api/tasks` | Add a task `{ title, pillar, date }` |
+| PATCH / DELETE | `/api/tasks/:id` | Tick done, move date, rename / delete |
+| GET | `/api/tasks/overdue?before=YYYY-MM-DD` | Unfinished tasks before a date |
+| PUT | `/api/notes/:date` | Save the note for a day |
+| GET | `/api/activity?from=&to=` | Done/total tasks per day (contribution map) |
+| GET / POST | `/api/applications` | Job list / add a company |
+| GET | `/api/applications/due?on=YYYY-MM-DD` | Active companies whose next step is due |
+| PATCH / DELETE | `/api/applications/:id` | Update status, next step, offer / delete |
+| POST | `/api/applications/:id/complete-step` | Log current step as a done Job Hunt task, set the next one |
 
-Errors always return `{ "message": "..." }`, which the UI surfaces in its error state.
-
----
-
-## The five sections
-
-1. **Dashboard** — mission, current vs target CTC, days remaining, live application/interview counts, mission pillars, upcoming interviews, follow-ups due.
-2. **Weekly Plan** — create weeks, define outcomes, add tasks with estimated hours, priority, planned date and deadline; update task status.
-3. **Daily Log** — planned vs actual minutes, DSA problems and topics, per-task outcomes, blockers and reflection.
-4. **Applications** — companies, roles, expected/offered CTC, referral source, status, interview rounds, follow-up reminders with snooze.
-5. **Review & Insights** — weekly completion rate, planned vs actual hours, DSA trend, blockers log, and next actions generated from gaps in your own data.
-
----
-
-## Next steps
-
-- Add authentication if this ever leaves `localhost`.
-- Add a lightweight chart for the weekly trend table.
-- Export weekly reviews to Markdown for retro notes.
+Errors always return `{ "message": "..." }`, which the UI shows.

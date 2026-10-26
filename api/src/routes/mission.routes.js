@@ -12,11 +12,11 @@ router.get(
     if (!rows.length) {
       throw new HttpError(404, 'No mission configured. Run `npm run db:seed`.');
     }
-    const pillars = await query(
-      'SELECT * FROM mission_pillars WHERE mission_id = $1 ORDER BY sort_order, id',
-      [rows[0].id],
+    // CTC progress only moves when a real offer is recorded.
+    const offer = await query(
+      "SELECT MAX(offer_total_lpa) AS best FROM applications WHERE status = 'offer'",
     );
-    res.json(toMission(rows[0], pillars.rows));
+    res.json(toMission(rows[0], offer.rows[0].best));
   }),
 );
 

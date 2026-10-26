@@ -1,66 +1,63 @@
 const { Router } = require('express');
-const { query } = require('../db/pool');
-const { toApplication, toRound } = require('../utils/mappers');
+const { query, withTransaction } = require('../db/pool');
+const { toApplication, toTask } = require('../utils/mappers');
 const { asyncRoute, required, oneOf, nullable, HttpError } = require('../utils/http');
 
-const STATUSES = ['wishlist', 'applied', 'in_process', 'offer', 'rejected', 'on_hold'];
-const ROUND_STATUSES = ['scheduled', 'cleared', 'failed', 'cancelled'];
+const STATUSES = ['target', 'referral_asked', 'applied', 'interviewing', 'offer', 'rejected', 'dropped'];
+const ACTIVE = ['target', 'referral_asked', 'applied', 'interviewing'];
+const PAY_BANDS = ['yes', 'maybe', 'no'];
+const SOURCES = ['referral', 'recruiter', 'direct'];
+
+function validate(body) {
+  oneOf(body.status, STATUSES, 'status');
+  oneOf(body.payBand, PAY_BANDS, 'payBand');
+  oneOf(body.source, SOURCES, 'source');
+}
 
 const router = Router();
 
 router.get(
   '/',
   asyncRoute(async (_req, res) => {
-    const apps = await query('SELECT * FROM applications ORDER BY created_at DESC, id DESC');
-    if (!apps.rowCount) return res.json([]);
+    const { rows } = await query('SELECT * FROM applications ORDER BY created_at DESC, id DESC');
+    res.json(rows.map(toApplication));
+  }),
+);
 
-    const rounds = await query(
-      'SELECT * FROM interview_rounds WHERE application_id = ANY($1::int[]) ORDER BY scheduled_at NULLS LAST, id',
-      [apps.rows.map((a) => a.id)],
+/** Active companies whose next step is due on or before `on` — shown on the Today page. */
+router.get(
+  '/due',
+  asyncRoute(async (req, res) => {
+    required(req.query, ['on']);
+    const { rows } = await query(
+      `SELECT * FROM applications
+       WHERE status = ANY($1) AND next_step <> '' AND next_step_on <= $2
+       ORDER BY next_step_on, id`,
+      [ACTIVE, req.query.on],
     );
-    res.json(
-      apps.rows.map((app) =>
-        toApplication(
-          app,
-          rounds.rows.filter((r) => r.application_id === app.id).map(toRound),
-        ),
-      ),
-    );
+    res.json(rows.map(toApplication));
   }),
 );
 
 router.post(
   '/',
   asyncRoute(async (req, res) => {
-    required(req.body, ['company', 'role']);
-    oneOf(req.body.status, STATUSES, 'status');
+    required(req.body, ['company']);
+    validate(req.body);
 
-    const {
-      company,
-      role,
-      expectedCtcLpa = null,
-      offeredCtcLpa = null,
-      referralSource = null,
-      status = 'wishlist',
-      appliedOn = null,
-      nextFollowUp = null,
-      notes = '',
-    } = req.body;
-
+    const b = req.body;
     const { rows } = await query(
-      `INSERT INTO applications
-         (company, role, expected_ctc_lpa, offered_ctc_lpa, referral_source, status, applied_on, next_follow_up, notes)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+      `INSERT INTO applications (company, role, pay_band, source, contact, status, next_step, next_step_on)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
       [
-        company,
-        role,
-        nullable(expectedCtcLpa),
-        nullable(offeredCtcLpa),
-        nullable(referralSource),
-        status,
-        nullable(appliedOn),
-        nullable(nextFollowUp),
-        notes,
+        b.company.trim(),
+        b.role ?? '',
+        b.payBand ?? 'maybe',
+        b.source ?? 'referral',
+        b.contact ?? '',
+        b.status ?? 'target',
+        b.nextStep ?? '',
+        nullable(b.nextStepOn),
       ],
     );
     res.status(201).json(toApplication(rows[0]));
@@ -70,27 +67,65 @@ router.post(
 router.patch(
   '/:id',
   asyncRoute(async (req, res) => {
-    oneOf(req.body.status, STATUSES, 'status');
+    validate(req.body);
     const fields = {
+      company: req.body.company,
+      role: req.body.role,
+      pay_band: req.body.payBand,
+      source: req.body.source,
+      contact: req.body.contact,
       status: req.body.status,
-      applied_on: req.body.appliedOn,
-      next_follow_up: req.body.nextFollowUp,
-      offered_ctc_lpa: req.body.offeredCtcLpa,
-      expected_ctc_lpa: req.body.expectedCtcLpa,
-      referral_source: req.body.referralSource,
-      notes: req.body.notes,
+      next_step: req.body.nextStep,
+      next_step_on: req.body.nextStepOn,
+      offer_fixed_lpa: req.body.offerFixedLpa,
+      offer_total_lpa: req.body.offerTotalLpa,
     };
     const updates = Object.entries(fields).filter(([, v]) => v !== undefined);
     if (!updates.length) throw new HttpError(400, 'No updatable fields provided.');
 
+    // Text columns keep '' (NOT NULL); dates and numbers turn '' into NULL.
+    const textCols = ['company', 'role', 'contact', 'next_step'];
+    const values = updates.map(([col, v]) => (textCols.includes(col) ? v : nullable(v)));
     const set = updates.map(([col], i) => `${col} = $${i + 1}`).join(', ');
-    const values = updates.map(([, v]) => nullable(v));
     const { rows } = await query(
-      `UPDATE applications SET ${set} WHERE id = $${values.length + 1} RETURNING *`,
+      `UPDATE applications SET ${set}, last_activity_on = CURRENT_DATE
+       WHERE id = $${values.length + 1} RETURNING *`,
       [...values, req.params.id],
     );
     if (!rows.length) throw new HttpError(404, 'Application not found.');
     res.json(toApplication(rows[0]));
+  }),
+);
+
+/**
+ * Marks the current next step as done: logs it as a completed Job Hunt task for today
+ * (so it counts on the contribution map) and sets the following step.
+ */
+router.post(
+  '/:id/complete-step',
+  asyncRoute(async (req, res) => {
+    oneOf(req.body.status, STATUSES, 'status');
+    const result = await withTransaction(async (client) => {
+      const current = await client.query('SELECT * FROM applications WHERE id = $1 FOR UPDATE', [
+        req.params.id,
+      ]);
+      if (!current.rowCount) throw new HttpError(404, 'Application not found.');
+      const app = current.rows[0];
+
+      const task = await client.query(
+        `INSERT INTO tasks (title, pillar, task_date, done)
+         VALUES ($1, 'jobs', CURRENT_DATE, true) RETURNING *`,
+        [`${app.company}: ${app.next_step || 'follow-up'}`],
+      );
+      const updated = await client.query(
+        `UPDATE applications
+         SET next_step = $1, next_step_on = $2, status = $3, last_activity_on = CURRENT_DATE
+         WHERE id = $4 RETURNING *`,
+        [req.body.nextStep ?? '', nullable(req.body.nextStepOn), req.body.status ?? app.status, app.id],
+      );
+      return { application: toApplication(updated.rows[0]), task: toTask(task.rows[0]) };
+    });
+    res.json(result);
   }),
 );
 
@@ -102,58 +137,4 @@ router.delete(
   }),
 );
 
-router.post(
-  '/:id/rounds',
-  asyncRoute(async (req, res) => {
-    required(req.body, ['name']);
-    oneOf(req.body.status, ROUND_STATUSES, 'status');
-
-    const { rows } = await query(
-      `INSERT INTO interview_rounds (application_id, name, scheduled_at, status, feedback)
-       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-      [
-        req.params.id,
-        req.body.name,
-        nullable(req.body.scheduledAt),
-        req.body.status ?? 'scheduled',
-        req.body.feedback ?? '',
-      ],
-    );
-    res.status(201).json(toRound(rows[0]));
-  }),
-);
-
-const roundsRouter = Router();
-
-roundsRouter.patch(
-  '/:id',
-  asyncRoute(async (req, res) => {
-    oneOf(req.body.status, ROUND_STATUSES, 'status');
-    const fields = {
-      status: req.body.status,
-      scheduled_at: req.body.scheduledAt,
-      feedback: req.body.feedback,
-    };
-    const updates = Object.entries(fields).filter(([, v]) => v !== undefined);
-    if (!updates.length) throw new HttpError(400, 'No updatable fields provided.');
-
-    const set = updates.map(([col], i) => `${col} = $${i + 1}`).join(', ');
-    const values = updates.map(([, v]) => nullable(v));
-    const { rows } = await query(
-      `UPDATE interview_rounds SET ${set} WHERE id = $${values.length + 1} RETURNING *`,
-      [...values, req.params.id],
-    );
-    if (!rows.length) throw new HttpError(404, 'Round not found.');
-    res.json(toRound(rows[0]));
-  }),
-);
-
-roundsRouter.delete(
-  '/:id',
-  asyncRoute(async (req, res) => {
-    await query('DELETE FROM interview_rounds WHERE id = $1', [req.params.id]);
-    res.json({ id: Number(req.params.id) });
-  }),
-);
-
-module.exports = { router, roundsRouter };
+module.exports = router;

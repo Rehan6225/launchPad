@@ -1,34 +1,21 @@
 import { Routes } from '@angular/router';
 
 export const routes: Routes = [
-  { path: '', pathMatch: 'full', redirectTo: 'dashboard' },
+  { path: '', pathMatch: 'full', redirectTo: 'today' },
   {
-    path: 'dashboard',
-    title: 'Dashboard · Launchpad',
-    loadComponent: () =>
-      import('./features/dashboard/dashboard.page').then((m) => m.DashboardPage),
+    path: 'today',
+    title: 'Today · Launchpad',
+    loadComponent: () => import('./features/today/today.page').then((m) => m.TodayPage),
   },
   {
-    path: 'weekly-plan',
-    title: 'Weekly Plan · Launchpad',
-    loadComponent: () =>
-      import('./features/weekly-plan/weekly-plan.page').then((m) => m.WeeklyPlanPage),
+    path: 'week',
+    title: 'Week · Launchpad',
+    loadComponent: () => import('./features/week/week.page').then((m) => m.WeekPage),
   },
   {
-    path: 'daily-log',
-    title: 'Daily Log · Launchpad',
-    loadComponent: () => import('./features/daily-log/daily-log.page').then((m) => m.DailyLogPage),
+    path: 'jobs',
+    title: 'Jobs · Launchpad',
+    loadComponent: () => import('./features/jobs/jobs.page').then((m) => m.JobsPage),
   },
-  {
-    path: 'applications',
-    title: 'Applications · Launchpad',
-    loadComponent: () =>
-      import('./features/applications/applications.page').then((m) => m.ApplicationsPage),
-  },
-  {
-    path: 'review',
-    title: 'Review & Insights · Launchpad',
-    loadComponent: () => import('./features/review/review.page').then((m) => m.ReviewPage),
-  },
-  { path: '**', redirectTo: 'dashboard' },
+  { path: '**', redirectTo: 'today' },
 ];

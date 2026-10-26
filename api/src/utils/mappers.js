@@ -10,98 +10,42 @@ function num(value) {
   return value === null || value === undefined ? null : Number(value);
 }
 
-const toMission = (row, pillars) => ({
+const toMission = (row, bestOfferLpa) => ({
   id: row.id,
   title: row.title,
   summary: row.summary,
   currentCtcLpa: Number(row.current_ctc_lpa),
   targetCtcLpa: Number(row.target_ctc_lpa),
   targetDate: day(row.target_date),
-  pillars: pillars.map((p) => ({ id: p.id, name: p.name, description: p.description })),
+  bestOfferLpa: num(bestOfferLpa),
 });
 
 const toTask = (row) => ({
   id: row.id,
-  weekId: row.week_id,
   title: row.title,
-  category: row.category,
-  plannedDate: day(row.planned_date),
-  estimatedHours: Number(row.estimated_hours),
-  priority: row.priority,
-  dueDate: day(row.due_date),
-  status: row.status,
+  pillar: row.pillar,
+  date: day(row.task_date),
+  done: row.done,
 });
 
-const toOutcome = (row) => ({
-  id: row.id,
-  weekId: row.week_id,
-  description: row.description,
-  achieved: row.achieved,
+const toNote = (row) => ({
+  date: day(row.note_date),
+  note: row.note,
 });
 
-const toWeek = (row, outcomes = [], tasks = []) => ({
-  id: row.id,
-  weekNumber: row.week_number,
-  startDate: day(row.start_date),
-  endDate: day(row.end_date),
-  theme: row.theme,
-  outcomes,
-  tasks,
-});
-
-const toEntry = (row) => ({
-  id: row.id,
-  logId: row.log_id,
-  taskId: row.task_id,
-  taskTitle: row.task_title,
-  actualMinutes: row.actual_minutes,
-  outcome: row.outcome,
-  notes: row.notes,
-});
-
-const toLog = (row, entries = []) => ({
-  id: row.id,
-  logDate: day(row.log_date),
-  plannedMinutes: row.planned_minutes,
-  actualMinutes: row.actual_minutes,
-  dsaProblemsSolved: row.dsa_problems_solved,
-  dsaTopics: row.dsa_topics,
-  blockers: row.blockers,
-  reflection: row.reflection,
-  entries,
-});
-
-const toRound = (row) => ({
-  id: row.id,
-  applicationId: row.application_id,
-  name: row.name,
-  scheduledAt: day(row.scheduled_at),
-  status: row.status,
-  feedback: row.feedback,
-});
-
-const toApplication = (row, rounds = []) => ({
+const toApplication = (row) => ({
   id: row.id,
   company: row.company,
   role: row.role,
-  expectedCtcLpa: num(row.expected_ctc_lpa),
-  offeredCtcLpa: num(row.offered_ctc_lpa),
-  referralSource: row.referral_source,
+  payBand: row.pay_band,
+  source: row.source,
+  contact: row.contact,
   status: row.status,
-  appliedOn: day(row.applied_on),
-  nextFollowUp: day(row.next_follow_up),
-  notes: row.notes,
-  rounds,
+  nextStep: row.next_step,
+  nextStepOn: day(row.next_step_on),
+  offerFixedLpa: num(row.offer_fixed_lpa),
+  offerTotalLpa: num(row.offer_total_lpa),
+  lastActivityOn: day(row.last_activity_on),
 });
 
-module.exports = {
-  day,
-  toMission,
-  toTask,
-  toOutcome,
-  toWeek,
-  toEntry,
-  toLog,
-  toRound,
-  toApplication,
-};
+module.exports = { day, toMission, toTask, toNote, toApplication };

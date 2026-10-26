@@ -2,16 +2,11 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable, catchError, throwError } from 'rxjs';
 import { environment } from '../../../environments/environment';
-import { MockBackend } from '../data/mock-backend';
 
-/**
- * Single entry point for data access. Routes to the in-memory mock backend
- * or the Express API depending on `environment.useMock`.
- */
+/** Single entry point for talking to the Express API. Errors become readable messages. */
 @Injectable({ providedIn: 'root' })
 export class ApiService {
   private http = inject(HttpClient);
-  private mock = inject(MockBackend);
 
   get<T>(path: string): Observable<T> {
     return this.request<T>('GET', path);
@@ -19,6 +14,10 @@ export class ApiService {
 
   post<T>(path: string, body: unknown): Observable<T> {
     return this.request<T>('POST', path, body);
+  }
+
+  put<T>(path: string, body: unknown): Observable<T> {
+    return this.request<T>('PUT', path, body);
   }
 
   patch<T>(path: string, body: unknown): Observable<T> {
@@ -30,13 +29,9 @@ export class ApiService {
   }
 
   private request<T>(method: string, path: string, body?: unknown): Observable<T> {
-    const source = environment.useMock
-      ? this.mock.handle<T>(method, path, body)
-      : this.http.request<T>(method, `${environment.apiUrl}/${path.replace(/^\/+/, '')}`, {
-          body,
-        });
-
-    return source.pipe(catchError((err) => throwError(() => new Error(toMessage(err)))));
+    return this.http
+      .request<T>(method, `${environment.apiUrl}/${path.replace(/^\/+/, '')}`, { body })
+      .pipe(catchError((err) => throwError(() => new Error(toMessage(err)))));
   }
 }
 

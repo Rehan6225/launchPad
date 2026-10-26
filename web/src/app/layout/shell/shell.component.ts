@@ -1,88 +1,79 @@
-import { ChangeDetectionStrategy, Component, signal } from '@angular/core';
-import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
-import { environment } from '../../../environments/environment';
-
-interface NavItem {
-  path: string;
-  label: string;
-  icon: string;
-}
+import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, computed, inject, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+import { filter } from 'rxjs';
+import { ProgressBarComponent } from '../../shared';
+import { Mission } from '../../core/models';
+import { TrackerService } from '../../core/services/tracker.service';
+import { daysBetween, today } from '../../core/dates';
 
 @Component({
   selector: 'lp-shell',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterOutlet, RouterLink, RouterLinkActive],
+  imports: [RouterOutlet, RouterLink, RouterLinkActive, ProgressBarComponent],
   template: `
-    <div class="shell" [class.nav-open]="navOpen()">
-      <aside class="sidebar">
+    <header class="top">
+      <div class="inner">
         <div class="brand">
           <span class="mark">L</span>
-          <div>
-            <strong>Launchpad</strong>
-            <p class="small faint">₹20 LPA → ₹40 LPA</p>
-          </div>
+          <strong>Launchpad</strong>
         </div>
-
         <nav>
-          @for (item of nav; track item.path) {
-            <a
-              [routerLink]="item.path"
-              routerLinkActive="active"
-              (click)="navOpen.set(false)"
-              class="nav-item"
-            >
-              <span class="icon" aria-hidden="true">{{ item.icon }}</span>
-              {{ item.label }}
-            </a>
-          }
+          <a routerLink="/today" routerLinkActive="active">Today</a>
+          <a routerLink="/week" routerLinkActive="active">Week</a>
+          <a routerLink="/jobs" routerLinkActive="active">Jobs</a>
         </nav>
-
-        <footer class="small faint">
-          {{ mode }}
-        </footer>
-      </aside>
-
-      <div class="main">
-        <div class="topbar">
-          <button class="btn btn-sm btn-ghost" type="button" (click)="navOpen.set(!navOpen())">
-            ☰ Menu
-          </button>
-          <span class="small muted">Target date · 31 Dec 2026</span>
-        </div>
-        <main>
-          <router-outlet />
-        </main>
       </div>
-    </div>
+    </header>
+
+    @if (mission(); as m) {
+      <section class="mission">
+        <div class="inner">
+          <div class="row-between">
+            <span>
+              <strong>₹{{ m.currentCtcLpa }}L → ₹{{ m.targetCtcLpa }}L</strong>
+              <span class="muted"> · Full-Stack Engineer</span>
+            </span>
+            <span class="small muted">
+              <strong class="days">{{ daysLeft() }}</strong> days left ·
+              Best offer: {{ m.bestOfferLpa ? '₹' + m.bestOfferLpa + 'L' : 'none yet' }}
+            </span>
+          </div>
+          <lp-progress [percent]="ctcPercent()" />
+        </div>
+      </section>
+    }
+
+    <main class="inner">
+      <router-outlet />
+    </main>
   `,
   styles: [
     `
-      .shell {
-        display: grid;
-        grid-template-columns: 232px 1fr;
-        min-height: 100vh;
+      .inner {
+        max-width: 880px;
+        margin: 0 auto;
+        padding: 0 16px;
       }
-      .sidebar {
-        display: flex;
-        flex-direction: column;
-        gap: 20px;
-        padding: 20px 14px;
+      .top {
+        border-bottom: 1px solid var(--border);
         background: var(--bg-elevated);
-        border-right: 1px solid var(--border);
-        position: sticky;
-        top: 0;
-        height: 100vh;
+      }
+      .top .inner {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        height: 56px;
       }
       .brand {
         display: flex;
         align-items: center;
         gap: 10px;
-        padding: 0 6px;
       }
       .mark {
-        width: 30px;
-        height: 30px;
+        width: 28px;
+        height: 28px;
         display: grid;
         place-items: center;
         border-radius: 8px;
@@ -90,86 +81,70 @@ interface NavItem {
         color: #0a0d12;
         font-weight: 700;
       }
-      .brand strong {
-        font-size: 14px;
-      }
       nav {
         display: flex;
-        flex-direction: column;
-        gap: 2px;
-        flex: 1;
+        gap: 4px;
       }
-      .nav-item {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        padding: 8px 10px;
+      nav a {
+        padding: 6px 12px;
         border-radius: var(--radius-sm);
         color: var(--text-muted);
-        font-size: 13px;
       }
-      .nav-item:hover {
-        background: var(--bg-subtle);
+      nav a:hover {
         color: var(--text);
+        background: var(--bg-subtle);
       }
-      .nav-item.active {
-        background: var(--accent-soft);
+      nav a.active {
         color: var(--accent);
+        background: var(--accent-soft);
       }
-      .icon {
-        width: 18px;
-        text-align: center;
-        font-size: 13px;
+      .mission {
+        border-bottom: 1px solid var(--border);
+        padding: 14px 0;
       }
-      .main {
+      .mission .inner {
         display: flex;
         flex-direction: column;
-        min-width: 0;
+        gap: 10px;
       }
-      .topbar {
-        display: none;
-        align-items: center;
-        justify-content: space-between;
-        padding: 10px 16px;
-        border-bottom: 1px solid var(--border);
+      .mission .row-between {
+        flex-wrap: wrap;
       }
-      main {
-        padding: 28px;
-        max-width: 1180px;
-        width: 100%;
+      .days {
+        color: var(--text);
       }
-      @media (max-width: 900px) {
-        .shell {
-          grid-template-columns: 1fr;
-        }
-        .sidebar {
-          display: none;
-        }
-        .shell.nav-open .sidebar {
-          display: flex;
-          position: fixed;
-          z-index: 20;
-          width: 232px;
-        }
-        .topbar {
-          display: flex;
-        }
-        main {
-          padding: 18px 16px 48px;
-        }
+      main.inner {
+        padding-top: 24px;
+        padding-bottom: 48px;
       }
     `,
   ],
 })
-export class ShellComponent {
-  readonly navOpen = signal(false);
-  readonly mode = environment.useMock ? 'Mock data (local)' : 'Connected to API';
+export class ShellComponent implements OnInit {
+  private tracker = inject(TrackerService);
+  private router = inject(Router);
+  private destroyRef = inject(DestroyRef);
 
-  readonly nav: NavItem[] = [
-    { path: '/dashboard', label: 'Dashboard', icon: '◎' },
-    { path: '/weekly-plan', label: 'Weekly Plan', icon: '▤' },
-    { path: '/daily-log', label: 'Daily Log', icon: '✎' },
-    { path: '/applications', label: 'Applications', icon: '✉' },
-    { path: '/review', label: 'Review & Insights', icon: '◳' },
-  ];
+  readonly mission = signal<Mission | null>(null);
+  readonly daysLeft = computed(() => {
+    const m = this.mission();
+    return m ? Math.max(0, daysBetween(today(), m.targetDate)) : 0;
+  });
+  /** Moves only when a real offer is recorded on the Jobs page. */
+  readonly ctcPercent = computed(() => {
+    const m = this.mission();
+    if (!m?.bestOfferLpa) return 0;
+    return ((m.bestOfferLpa - m.currentCtcLpa) / (m.targetCtcLpa - m.currentCtcLpa)) * 100;
+  });
+
+  ngOnInit(): void {
+    this.loadMission();
+    this.router.events
+      .pipe(filter((e) => e instanceof NavigationEnd), takeUntilDestroyed(this.destroyRef))
+      .subscribe(() => this.loadMission());
+  }
+
+  private loadMission(): void {
+    this.tracker.mission().subscribe({ next: (m) => this.mission.set(m), error: () => void 0 });
+  }
 }

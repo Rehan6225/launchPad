@@ -1,18 +1,16 @@
 /** Shared domain models for Launchpad. */
 
-export type TaskStatus = 'planned' | 'in_progress' | 'done' | 'skipped';
-export type Priority = 'P0' | 'P1' | 'P2';
-export type TaskOutcome = 'done' | 'partial' | 'skipped';
+export type Pillar = 'dsa' | 'system_design' | 'projects' | 'jobs';
 
-export type ApplicationStatus =
-  | 'wishlist'
-  | 'applied'
-  | 'in_process'
-  | 'offer'
-  | 'rejected'
-  | 'on_hold';
+/** The four things that move ₹20 LPA → ₹40 LPA. Every task belongs to one. */
+export const PILLARS: { id: Pillar; label: string }[] = [
+  { id: 'dsa', label: 'DSA' },
+  { id: 'system_design', label: 'System Design' },
+  { id: 'projects', label: 'Projects' },
+  { id: 'jobs', label: 'Job Hunt' },
+];
 
-export type RoundStatus = 'scheduled' | 'cleared' | 'failed' | 'cancelled';
+export const pillarLabel = (id: Pillar) => PILLARS.find((p) => p.id === id)?.label ?? id;
 
 export interface Mission {
   id: number;
@@ -21,113 +19,96 @@ export interface Mission {
   currentCtcLpa: number;
   targetCtcLpa: number;
   targetDate: string; // ISO date
-  pillars: MissionPillar[];
+  bestOfferLpa: number | null;
 }
 
-export interface MissionPillar {
+export interface Task {
   id: number;
-  name: string;
-  description: string;
-}
-
-/** The plan as originally committed. Never mutated by execution logs. */
-export interface Week {
-  id: number;
-  weekNumber: number;
-  startDate: string;
-  endDate: string;
-  theme: string;
-  outcomes: WeekOutcome[];
-  tasks: PlannedTask[];
-}
-
-export interface WeekOutcome {
-  id: number;
-  weekId: number;
-  description: string;
-  achieved: boolean;
-}
-
-export interface PlannedTask {
-  id: number;
-  weekId: number;
   title: string;
-  category: string;
-  plannedDate: string;
-  estimatedHours: number;
-  priority: Priority;
-  dueDate: string | null;
-  status: TaskStatus;
+  pillar: Pillar;
+  date: string; // ISO date
+  done: boolean;
 }
 
-/** Execution log — kept separate from the plan. */
-export interface DailyLog {
-  id: number;
-  logDate: string;
-  plannedMinutes: number;
-  actualMinutes: number;
-  dsaProblemsSolved: number;
-  dsaTopics: string;
-  blockers: string;
-  reflection: string;
-  entries: LogEntry[];
+export interface DayNote {
+  date: string;
+  note: string;
 }
 
-export interface LogEntry {
-  id: number;
-  logId: number;
-  taskId: number | null;
-  taskTitle: string;
-  actualMinutes: number;
-  outcome: TaskOutcome;
-  notes: string;
+/** Tasks done vs planned on one day — one cell of the contribution map. */
+export interface DayActivity {
+  date: string;
+  done: number;
+  total: number;
 }
+
+/** Everything for one Monday–Sunday week. */
+export interface WeekData {
+  start: string;
+  focus: string;
+  tasks: Task[];
+  notes: DayNote[];
+}
+
+export type ApplicationStatus =
+  | 'target'
+  | 'referral_asked'
+  | 'applied'
+  | 'interviewing'
+  | 'offer'
+  | 'rejected'
+  | 'dropped';
+
+/** Pipeline order. The first four are "active" — they need a next step and can go stale. */
+export const APPLICATION_STATUSES: { id: ApplicationStatus; label: string }[] = [
+  { id: 'target', label: 'Target' },
+  { id: 'referral_asked', label: 'Referral asked' },
+  { id: 'applied', label: 'Applied' },
+  { id: 'interviewing', label: 'Interviewing' },
+  { id: 'offer', label: 'Offer' },
+  { id: 'rejected', label: 'Rejected' },
+  { id: 'dropped', label: 'Dropped' },
+];
+
+export const ACTIVE_STATUSES: ApplicationStatus[] = ['target', 'referral_asked', 'applied', 'interviewing'];
+
+export const statusLabel = (id: ApplicationStatus) =>
+  APPLICATION_STATUSES.find((s) => s.id === id)?.label ?? id;
+
+export type PayBand = 'yes' | 'maybe' | 'no';
+export const PAY_BANDS: { id: PayBand; label: string }[] = [
+  { id: 'yes', label: 'Pays 40L+' },
+  { id: 'maybe', label: 'Maybe 40L' },
+  { id: 'no', label: 'Below 40L' },
+];
+
+export type Source = 'referral' | 'recruiter' | 'direct';
+export const SOURCES: { id: Source; label: string }[] = [
+  { id: 'referral', label: 'Referral' },
+  { id: 'recruiter', label: 'Recruiter' },
+  { id: 'direct', label: 'Direct apply' },
+];
+
+/** Days without any change before an active company is flagged as stale. */
+export const STALE_AFTER_DAYS = 7;
 
 export interface Application {
   id: number;
   company: string;
   role: string;
-  expectedCtcLpa: number | null;
-  offeredCtcLpa: number | null;
-  referralSource: string | null;
+  payBand: PayBand;
+  source: Source;
+  contact: string;
   status: ApplicationStatus;
-  appliedOn: string | null;
-  nextFollowUp: string | null;
-  notes: string;
-  rounds: InterviewRound[];
+  nextStep: string;
+  nextStepOn: string | null;
+  offerFixedLpa: number | null;
+  offerTotalLpa: number | null;
+  lastActivityOn: string;
 }
 
-export interface InterviewRound {
-  id: number;
-  applicationId: number;
-  name: string;
-  scheduledAt: string | null;
-  status: RoundStatus;
-  feedback: string;
-}
-
-export interface WeeklyReview {
-  weekId: number;
-  weekNumber: number;
-  startDate: string;
-  endDate: string;
-  tasksPlanned: number;
-  tasksDone: number;
-  completionRate: number; // 0..1
-  plannedHours: number;
-  actualHours: number;
-  dsaProblemsSolved: number;
-  blockers: string[];
-}
-
-export interface ReviewInsights {
-  weeks: WeeklyReview[];
-  nextActions: NextAction[];
-}
-
-export interface NextAction {
-  id: string;
-  label: string;
-  reason: string;
-  severity: 'info' | 'warn' | 'danger';
+export interface NextStep {
+  nextStep: string;
+  nextStepOn: string | null;
+  status: ApplicationStatus;
 }
