@@ -43,9 +43,9 @@ The CTC progress bar only moves when you record a real offer.
 
 ```bash
 createdb launchpad
-cd api
+cd server
 npm install
-cp .env.example .env        # set DATABASE_URL
+cp .env.example .env        # set DATABASE_URL and AUTH_*
 npm run db:migrate          # apply schema.sql
 npm run db:seed             # inserts the mission only
 npm run dev                 # http://localhost:4000
@@ -75,3 +75,21 @@ npm start                   # http://localhost:4200 (proxies /api to :4000)
 | POST | `/api/applications/:id/complete-step` | Log current step as a done Job Hunt task, set the next one |
 
 Errors always return `{ "message": "..." }`, which the UI shows.
+
+---
+
+## Deploying (Vercel + Neon)
+
+One Vercel project serves both the Angular build and the API (`api/index.js` wraps the Express app in `server/`). See `vercel.json`.
+
+1. Create a Neon Postgres database (region: AWS Singapore, to match the `sin1` function region).
+2. Apply the schema from your machine:
+   ```bash
+   cd server
+   DATABASE_URL="<neon-direct-url>" npm run db:migrate
+   DATABASE_URL="<neon-direct-url>" npm run db:seed
+   ```
+3. Import the repo in Vercel with **Root Directory** left at the repo root, and set these environment variables:
+   `DATABASE_URL` (Neon *pooled* URL), `AUTH_USERNAME`, `AUTH_PASSWORD`, `AUTH_SECRET` (`openssl rand -base64 32`).
+4. Deploy, then check `/api/health` returns `{"status":"ok"}`.
+

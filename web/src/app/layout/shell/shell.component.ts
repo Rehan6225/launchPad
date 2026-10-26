@@ -5,6 +5,7 @@ import { filter } from 'rxjs';
 import { ProgressBarComponent } from '../../shared';
 import { Mission } from '../../core/models';
 import { TrackerService } from '../../core/services/tracker.service';
+import { AuthService } from '../../core/services/auth.service';
 import { daysBetween, today } from '../../core/dates';
 
 @Component({
@@ -23,6 +24,7 @@ import { daysBetween, today } from '../../core/dates';
           <a routerLink="/today" routerLinkActive="active">Today</a>
           <a routerLink="/week" routerLinkActive="active">Week</a>
           <a routerLink="/jobs" routerLinkActive="active">Jobs</a>
+          <button class="btn btn-ghost btn-sm" type="button" (click)="auth.logout()">Sign out</button>
         </nav>
       </div>
     </header>
@@ -83,6 +85,7 @@ import { daysBetween, today } from '../../core/dates';
       }
       nav {
         display: flex;
+        align-items: center;
         gap: 4px;
       }
       nav a {
@@ -122,6 +125,7 @@ import { daysBetween, today } from '../../core/dates';
 })
 export class ShellComponent implements OnInit {
   private tracker = inject(TrackerService);
+  readonly auth = inject(AuthService);
   private router = inject(Router);
   private destroyRef = inject(DestroyRef);
 

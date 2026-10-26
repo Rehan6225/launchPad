@@ -4,6 +4,8 @@ const cors = require('cors');
 const missionRoutes = require('./routes/mission.routes');
 const { weekRouter, tasksRouter, notesRouter, activityRouter } = require('./routes/week.routes');
 const applicationsRoutes = require('./routes/applications.routes');
+const authRoutes = require('./routes/auth.routes');
+const { requireAuth } = require('./utils/auth');
 
 const app = express();
 
@@ -11,6 +13,10 @@ app.use(cors({ origin: process.env.CORS_ORIGIN || '*' }));
 app.use(express.json());
 
 app.get('/api/health', (_req, res) => res.json({ status: 'ok' }));
+
+// Everything below the login route requires a valid session.
+app.use('/api/auth', authRoutes);
+app.use('/api', requireAuth);
 
 app.use('/api/mission', missionRoutes);
 app.use('/api/week', weekRouter);
